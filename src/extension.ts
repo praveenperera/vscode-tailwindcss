@@ -6,6 +6,7 @@ const htmlElements = require('./htmlElements.js')
 const tailwindClassNames = require('tailwind-class-names')
 const dlv = require('dlv')
 const Color = require('color')
+const lineColumn = require('line-column')
 
 const CONFIG_GLOB =
   '**/{tailwind,tailwind.config,tailwind-config,.tailwindrc}.js'
@@ -96,7 +97,7 @@ async function getTailwind() {
     return null
   }
 
-  return tw
+  return { ...tw, configUri: files[0] }
 }
 
 export function deactivate() {}
@@ -431,6 +432,59 @@ class TailwindIntellisense {
 
     this._providers = []
 
+    // this._providers.push(
+    //   vscode.languages.registerDocumentLinkProvider(['javascript'], {
+    //     provideDocumentLinks(document) {
+    //       if (document.uri.fsPath !== tailwind.configUri.fsPath) return
+
+    //       let text = document.getText()
+    //       let start = text.indexOf('modules')
+    //       let { line: startLine, col: startCol } = lineColumn(text, start)
+    //       let { line: endLine, col: endCol } = lineColumn(text, start + 7)
+
+    //       return [
+    //         new vscode.DocumentLink(
+    //           new vscode.Range(
+    //             new vscode.Position(startLine - 1, startCol - 1),
+    //             new vscode.Position(endLine - 1, endCol - 1)
+    //           ),
+    //           vscode.Uri.parse('https://google.co.uk')
+    //         )
+    //       ]
+    //     }
+    //   })
+    // )
+
+    this._providers.push(
+      vscode.languages.registerDefinitionProvider(HTML_TYPES, {
+        async provideDefinition(document, position) {
+          let hovered = getHoveredClassName(document, position)
+          if (!hovered) return null
+
+          let config = await vscode.workspace.openTextDocument(
+            tailwind.configUri
+          )
+          let configText = config.getText()
+          let match = configText.match(/^\s*backgroundColors:/m)
+          let { line, col } = lineColumn(
+            configText,
+            match.index + match[0].length - match[0].replace(/^\s+/, '').length
+          )
+
+          return [
+            {
+              originSelectionRange: hovered.range,
+              targetUri: tailwind.configUri,
+              targetRange: new vscode.Range(
+                new vscode.Position(line - 1, col - 1),
+                new vscode.Position(line - 1, col - 1)
+              )
+            }
+          ]
+        }
+      })
+    )
+
     this._providers.push(
       createCompletionItemProvider({
         items: this._items,
@@ -593,82 +647,52 @@ class TailwindIntellisense {
         [...HTML_TYPES, ...JS_TYPES, 'vue'],
         {
           provideHover: (document, position, token) => {
-            const range1: vscode.Range = new vscode.Range(
-              new vscode.Position(Math.max(position.line - 5, 0), 0),
-              position
-            )
-            const text1: string = document.getText(range1)
+            let hovered = getHoveredClassName(document, position)
 
-            if (!/\bclass(Name)?=['"][^'"]*$/.test(text1)) return
+            if (!hovered) return null
 
-            const range2: vscode.Range = new vscode.Range(
-              new vscode.Position(Math.max(position.line - 5, 0), 0),
-              position.with({ line: position.line + 1 })
-            )
-            const text2: string = document.getText(range2)
+            let { className, range } = hovered
 
-            let str = text1 + text2.substr(text1.length).match(/^([^"' ]*)/)[0]
-            let matches = str.match(/\bclass(Name)?=["']([^"']*)$/)
+            let parts = className.split(':')
 
-            if (matches && matches[2]) {
-              let className = matches[2].split(' ').pop()
-              let parts = className.split(':')
+            if (typeof dlv(this._tailwind.classNames, parts) === 'string') {
+              let base = parts.pop()
+              let selector = `.${escapeClassName(className)}`
 
-              if (typeof dlv(this._tailwind.classNames, parts) === 'string') {
-                let base = parts.pop()
-                let selector = `.${escapeClassName(className)}`
-
-                if (parts.indexOf('hover') !== -1) {
-                  selector += ':hover'
-                } else if (parts.indexOf('focus') !== -1) {
-                  selector += ':focus'
-                } else if (parts.indexOf('active') !== -1) {
-                  selector += ':active'
-                } else if (parts.indexOf('group-hover') !== -1) {
-                  selector = `.group:hover ${selector}`
-                }
-
-                let hoverStr = new vscode.MarkdownString()
-                let css = this._tailwind.classNames[base]
-                let m = css.match(/^(::?[a-z-]+) {(.*?)}/)
-                if (m) {
-                  selector += m[1]
-                  css = m[2].trim()
-                }
-                css = css.replace(/([;{]) /g, '$1\n').replace(/^/gm, '  ')
-                let code = `${selector} {\n${css}\n}`
-                let screens = dlv(this._tailwind.config, 'screens', {})
-
-                Object.keys(screens).some(screen => {
-                  if (parts.indexOf(screen) !== -1) {
-                    code = `@media (min-width: ${
-                      screens[screen]
-                    }) {\n${code.replace(/^/gm, '  ')}\n}`
-                    return true
-                  }
-                  return false
-                })
-                hoverStr.appendCodeblock(code, 'css')
-
-                let hoverRange = new vscode.Range(
-                  new vscode.Position(
-                    position.line,
-                    position.character +
-                      str.length -
-                      text1.length -
-                      className.length
-                  ),
-                  new vscode.Position(
-                    position.line,
-                    position.character + str.length - text1.length
-                  )
-                )
-
-                return new vscode.Hover(hoverStr, hoverRange)
+              if (parts.indexOf('hover') !== -1) {
+                selector += ':hover'
+              } else if (parts.indexOf('focus') !== -1) {
+                selector += ':focus'
+              } else if (parts.indexOf('active') !== -1) {
+                selector += ':active'
+              } else if (parts.indexOf('group-hover') !== -1) {
+                selector = `.group:hover ${selector}`
               }
-            }
 
-            return null
+              let hoverStr = new vscode.MarkdownString()
+              let css = this._tailwind.classNames[base]
+              let m = css.match(/^(::?[a-z-]+) {(.*?)}/)
+              if (m) {
+                selector += m[1]
+                css = m[2].trim()
+              }
+              css = css.replace(/([;{]) /g, '$1\n').replace(/^/gm, '  ')
+              let code = `${selector} {\n${css}\n}`
+              let screens = dlv(this._tailwind.config, 'screens', {})
+
+              Object.keys(screens).some(screen => {
+                if (parts.indexOf(screen) !== -1) {
+                  code = `@media (min-width: ${
+                    screens[screen]
+                  }) {\n${code.replace(/^/gm, '  ')}\n}`
+                  return true
+                }
+                return false
+              })
+              hoverStr.appendCodeblock(code, 'css')
+
+              return new vscode.Hover(hoverStr, range)
+            }
           }
         }
       )
@@ -787,4 +811,43 @@ function createScreenCompletionItemProvider({
     },
     ' '
   )
+}
+
+function getHoveredClassName(document, position) {
+  const range1: vscode.Range = new vscode.Range(
+    new vscode.Position(Math.max(position.line - 5, 0), 0),
+    position
+  )
+  const text1: string = document.getText(range1)
+
+  if (!/\bclass(Name)?=['"][^'"]*$/.test(text1)) return
+
+  const range2: vscode.Range = new vscode.Range(
+    new vscode.Position(Math.max(position.line - 5, 0), 0),
+    position.with({ line: position.line + 1 })
+  )
+  const text2: string = document.getText(range2)
+
+  let str = text1 + text2.substr(text1.length).match(/^([^"' ]*)/)[0]
+  let matches = str.match(/\bclass(Name)?=["']([^"']*)$/)
+
+  if (matches && matches[2]) {
+    let className = matches[2].split(' ').pop()
+    if (!className) return null
+
+    let range = new vscode.Range(
+      new vscode.Position(
+        position.line,
+        position.character + str.length - text1.length - className.length
+      ),
+      new vscode.Position(
+        position.line,
+        position.character + str.length - text1.length
+      )
+    )
+
+    return { className, range }
+  }
+
+  return null
 }
