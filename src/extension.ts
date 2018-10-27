@@ -7,6 +7,9 @@ const tailwindClassNames = require('tailwind-class-names')
 const dlv = require('dlv')
 const Color = require('color')
 const lineColumn = require('line-column')
+const babel = require('@babel/core')
+const babelPlugin = require('./babel-plugin.js')
+const { spawn } = require('child_process')
 
 const CONFIG_GLOB =
   '**/{tailwind,tailwind.config,tailwind-config,.tailwindrc}.js'
@@ -26,6 +29,12 @@ const HTML_TYPES = [
   'haml'
 ]
 const CSS_TYPES = ['css', 'sass', 'scss', 'less', 'stylus']
+const CONFIG_KEYS = {
+  bg: ['backgroundColors'],
+  w: ['width'],
+  opacity: ['opacity'],
+  font: ['fonts', 'fontWeights']
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   let tw
@@ -97,7 +106,16 @@ async function getTailwind() {
     return null
   }
 
-  return { ...tw, configUri: files[0] }
+  let transformedConfig = await babel.transformFileAsync(files[0].fsPath, {
+    plugins: [babelPlugin],
+    retainLines: true
+  })
+
+  return {
+    ...tw,
+    configUri: files[0],
+    transformedConfig: transformedConfig.code
+  }
 }
 
 export function deactivate() {}
@@ -461,23 +479,34 @@ class TailwindIntellisense {
           let hovered = getHoveredClassName(document, position)
           if (!hovered) return null
 
-          let config = await vscode.workspace.openTextDocument(
-            tailwind.configUri
+          let match = hovered.className.match(
+            new RegExp(`^(${Object.keys(CONFIG_KEYS).join('|')})-`)
           )
-          let configText = config.getText()
-          let match = configText.match(/^\s*backgroundColors:/m)
-          let { line, col } = lineColumn(
-            configText,
-            match.index + match[0].length - match[0].replace(/^\s+/, '').length
-          )
+
+          if (match === null) return null
+
+          let def
+
+          try {
+            def = await findDef(
+              tailwind.transformedConfig,
+              CONFIG_KEYS[match[1]].map(
+                x => `${x}["${hovered.className.substr(match[0].length)}"]`
+              )
+            )
+          } catch (_) {
+            return null
+          }
+
+          let [startLine, startCol, endLine, endCol] = def
 
           return [
             {
               originSelectionRange: hovered.range,
               targetUri: tailwind.configUri,
               targetRange: new vscode.Range(
-                new vscode.Position(line - 1, col - 1),
-                new vscode.Position(line - 1, col - 1)
+                new vscode.Position(startLine - 1, startCol),
+                new vscode.Position(endLine - 1, endCol)
               )
             }
           ]
@@ -850,4 +879,31 @@ function getHoveredClassName(document, position) {
   }
 
   return null
+}
+
+function findDef(code, keys) {
+  let s = spawn(
+    'node',
+    [
+      '-e',
+      'var module={};' +
+        code +
+        ';console.log([' +
+        keys.map(x => `module.exports.${x}`).join(',') +
+        '].filter(x=>typeof x !== "undefined")[0].pos().join(","));'
+    ],
+    { cwd: '/Users/brad/Code/vscode-tw-test/dir' }
+  )
+
+  return new Promise((resolve, reject) => {
+    s.stdout.on('data', data => {
+      resolve(
+        data
+          .toString()
+          .split(',')
+          .map(x => parseInt(x, 10))
+      )
+    })
+    s.stderr.on('data', reject)
+  })
 }

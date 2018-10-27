@@ -53,6 +53,7 @@
     "vscode": "^1.1.6"
   },
   "dependencies": {
+    "@babel/core": "^7.1.2",
     "color": "^3.0.0",
     "dlv": "^1.1.1",
     "line-column": "^1.0.2",
