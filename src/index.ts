@@ -9,7 +9,8 @@ import {
   TextDocument,
   OutputChannel,
   WorkspaceFolder,
-  Uri
+  Uri,
+  commands
 } from 'vscode'
 
 import {
@@ -17,6 +18,9 @@ import {
   LanguageClientOptions,
   TransportKind
 } from 'vscode-languageclient'
+
+import { createTreeView } from './treeView'
+import { openDocument } from './util'
 
 import * as path from 'path'
 
@@ -165,6 +169,24 @@ export async function activate(context: ExtensionContext) {
         serverOptions,
         clientOptions
       )
+
+      let refreshConfigExplorer
+
+      client.onReady().then(() => {
+        client.onNotification('tailwindcss/foundConfig', config => {
+          if (refreshConfigExplorer) {
+            refreshConfigExplorer(config)
+          } else {
+            refreshConfigExplorer = createTreeView(config)
+          }
+        })
+
+        commands.registerCommand('tailwindcss.goToDefinition', key => {
+          client.sendNotification('tailwindcss/findDefinition', [key])
+        })
+
+        client.onNotification('tailwindcss/definitionFound', openDocument)
+      })
 
       client.start()
       clients.set(folder.uri.toString(), client)

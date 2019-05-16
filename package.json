@@ -49,7 +49,21 @@
           "description": "Enable class name completions for Emmet-style syntax"
         }
       }
-    }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "tailwindcssConfigExplorer",
+          "name": "Tailwind CSS"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tailwindcss.goToDefinition",
+        "title": "Go To Definition"
+      }
+    ]
   },
   "preview": true,
   "scripts": {
