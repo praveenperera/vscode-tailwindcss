@@ -10,91 +10,91 @@ import {
   OutputChannel,
   WorkspaceFolder,
   Uri
-} from 'vscode'
+} from "vscode";
 
 import {
   LanguageClient,
   LanguageClientOptions,
   TransportKind
-} from 'vscode-languageclient'
+} from "vscode-languageclient";
 
-import * as path from 'path'
+import * as path from "path";
 
 const CONFIG_GLOB =
-  '**/{tailwind,tailwind.config,tailwind-config,.tailwindrc}.js'
+  "**/{tailwind,tailwind.config,tailwind-config,.tailwindrc}.js";
 export const CSS_LANGUAGES: string[] = [
-  'css',
-  'less',
-  'postcss',
-  'sass',
-  'scss',
-  'stylus',
-  'vue'
-]
+  "css",
+  "less",
+  "postcss",
+  "sass",
+  "scss",
+  "stylus",
+  "vue"
+];
 export const JS_LANGUAGES: string[] = [
-  'javascript',
-  'javascriptreact',
-  'reason',
-  'typescriptreact'
-]
+  "javascript",
+  "javascriptreact",
+  "reason",
+  "typescriptreact"
+];
 export const HTML_LANGUAGES: string[] = [
-  'blade',
-  'django-html',
-  'edge',
-  'ejs',
-  'erb',
-  'haml',
-  'handlebars',
-  'html',
-  'HTML (Eex)',
-  'HTML (EEx)',
-  'jade',
-  'leaf',
-  'markdown',
-  'njk',
-  'nunjucks',
-  'php',
-  'razor',
-  'slim',
-  'svelte',
-  'twig',
-  'vue',
+  "blade",
+  "django-html",
+  "edge",
+  "ejs",
+  "erb",
+  "haml",
+  "handlebars",
+  "html",
+  "HTML (EEx)",
+  "HTML (Eex)",
+  "jade",
+  "leaf",
+  "markdown",
+  "njk",
+  "nunjucks",
+  "php",
+  "razor",
+  "slim",
+  "svelte",
+  "twig",
+  "vue",
   ...JS_LANGUAGES
-]
+];
 export const LANGUAGES: string[] = [...CSS_LANGUAGES, ...HTML_LANGUAGES].filter(
   (val, index, arr) => arr.indexOf(val) === index
-)
+);
 
-let defaultClient: LanguageClient
-let clients: Map<string, LanguageClient> = new Map()
+let defaultClient: LanguageClient;
+let clients: Map<string, LanguageClient> = new Map();
 
-let _sortedWorkspaceFolders: string[] | undefined
+let _sortedWorkspaceFolders: string[] | undefined;
 function sortedWorkspaceFolders(): string[] {
   if (_sortedWorkspaceFolders === void 0) {
     _sortedWorkspaceFolders = Workspace.workspaceFolders
       ? Workspace.workspaceFolders
           .map(folder => {
-            let result = folder.uri.toString()
-            if (result.charAt(result.length - 1) !== '/') {
-              result = result + '/'
+            let result = folder.uri.toString();
+            if (result.charAt(result.length - 1) !== "/") {
+              result = result + "/";
             }
-            return result
+            return result;
           })
           .sort((a, b) => {
-            return a.length - b.length
+            return a.length - b.length;
           })
-      : []
+      : [];
   }
-  return _sortedWorkspaceFolders
+  return _sortedWorkspaceFolders;
 }
 Workspace.onDidChangeWorkspaceFolders(
   () => (_sortedWorkspaceFolders = undefined)
-)
+);
 
 function getOuterMostWorkspaceFolder(folder: WorkspaceFolder): WorkspaceFolder {
-  let sorted = sortedWorkspaceFolders()
+  let sorted = sortedWorkspaceFolders();
   for (let element of sorted) {
-    let uri = folder.uri.toString()
+    let uri = folder.uri.toString();
     if (uri.charAt(uri.length - 1) !== '/') {
       uri = uri + '/'
     }
