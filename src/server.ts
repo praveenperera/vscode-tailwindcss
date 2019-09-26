@@ -1,1 +1,1 @@
-import 'tailwindcss-language-server'
+import "./tailwindcss-language-server/index";
