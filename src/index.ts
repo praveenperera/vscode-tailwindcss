@@ -9,13 +9,13 @@ import {
   TextDocument,
   OutputChannel,
   WorkspaceFolder,
-  Uri
+  Uri,
 } from "vscode";
 
 import {
   LanguageClient,
   LanguageClientOptions,
-  TransportKind
+  TransportKind,
 } from "vscode-languageclient";
 
 import * as path from "path";
@@ -29,13 +29,13 @@ export const CSS_LANGUAGES: string[] = [
   "sass",
   "scss",
   "stylus",
-  "vue"
+  "vue",
 ];
 export const JS_LANGUAGES: string[] = [
   "javascript",
   "javascriptreact",
   "reason",
-  "typescriptreact"
+  "typescriptreact",
 ];
 export const HTML_LANGUAGES: string[] = [
   "blade",
@@ -48,6 +48,7 @@ export const HTML_LANGUAGES: string[] = [
   "html",
   "HTML (EEx)",
   "HTML (Eex)",
+  "html-eex",
   "jade",
   "leaf",
   "markdown",
@@ -59,7 +60,7 @@ export const HTML_LANGUAGES: string[] = [
   "svelte",
   "twig",
   "vue",
-  ...JS_LANGUAGES
+  ...JS_LANGUAGES,
 ];
 export const LANGUAGES: string[] = [...CSS_LANGUAGES, ...HTML_LANGUAGES].filter(
   (val, index, arr) => arr.indexOf(val) === index
@@ -73,7 +74,7 @@ function sortedWorkspaceFolders(): string[] {
   if (_sortedWorkspaceFolders === void 0) {
     _sortedWorkspaceFolders = Workspace.workspaceFolders
       ? Workspace.workspaceFolders
-          .map(folder => {
+          .map((folder) => {
             let result = folder.uri.toString();
             if (result.charAt(result.length - 1) !== "/") {
               result = result + "/";
@@ -95,106 +96,106 @@ function getOuterMostWorkspaceFolder(folder: WorkspaceFolder): WorkspaceFolder {
   let sorted = sortedWorkspaceFolders();
   for (let element of sorted) {
     let uri = folder.uri.toString();
-    if (uri.charAt(uri.length - 1) !== '/') {
-      uri = uri + '/'
+    if (uri.charAt(uri.length - 1) !== "/") {
+      uri = uri + "/";
     }
     if (uri.startsWith(element)) {
-      return Workspace.getWorkspaceFolder(Uri.parse(element))!
+      return Workspace.getWorkspaceFolder(Uri.parse(element))!;
     }
   }
-  return folder
+  return folder;
 }
 
 export async function activate(context: ExtensionContext) {
-  let module = context.asAbsolutePath(path.join('dist', 'server', 'index.js'))
+  let module = context.asAbsolutePath(path.join("dist", "server", "index.js"));
   let outputChannel: OutputChannel = Window.createOutputChannel(
-    'tailwindcss-language-server'
-  )
+    "tailwindcss-language-server"
+  );
 
   async function didOpenTextDocument(document: TextDocument): Promise<void> {
     if (
-      document.uri.scheme !== 'file' ||
+      document.uri.scheme !== "file" ||
       LANGUAGES.indexOf(document.languageId) === -1
     ) {
-      return
+      return;
     }
 
-    let uri = document.uri
-    let folder = Workspace.getWorkspaceFolder(uri)
+    let uri = document.uri;
+    let folder = Workspace.getWorkspaceFolder(uri);
     // Files outside a folder can't be handled. This might depend on the language.
     // Single file languages like JSON might handle files outside the workspace folders.
     if (!folder) {
-      return
+      return;
     }
 
     // If we have nested workspace folders we only start a server on the outer most workspace folder.
-    folder = getOuterMostWorkspaceFolder(folder)
+    folder = getOuterMostWorkspaceFolder(folder);
 
     if (!clients.has(folder.uri.toString())) {
       // placeholder
-      clients.set(folder.uri.toString(), null)
+      clients.set(folder.uri.toString(), null);
 
       let files = await Workspace.findFiles(
         CONFIG_GLOB,
-        '**/node_modules/**',
+        "**/node_modules/**",
         1
-      )
-      if (!files.length) return
+      );
+      if (!files.length) return;
 
       let debugOptions = {
-        execArgv: ['--nolazy', `--inspect=${6011 + clients.size}`]
-      }
+        execArgv: ["--nolazy", `--inspect=${6011 + clients.size}`],
+      };
       let serverOptions = {
         run: { module, transport: TransportKind.ipc },
-        debug: { module, transport: TransportKind.ipc, options: debugOptions }
-      }
+        debug: { module, transport: TransportKind.ipc, options: debugOptions },
+      };
       let clientOptions: LanguageClientOptions = {
-        documentSelector: LANGUAGES.map(language => ({
-          scheme: 'file',
+        documentSelector: LANGUAGES.map((language) => ({
+          scheme: "file",
           language,
-          pattern: `${folder.uri.fsPath}/**/*`
+          pattern: `${folder.uri.fsPath}/**/*`,
         })),
-        diagnosticCollectionName: 'tailwindcss-language-server',
+        diagnosticCollectionName: "tailwindcss-language-server",
         workspaceFolder: folder,
         outputChannel: outputChannel,
         synchronize: {
-          fileEvents: Workspace.createFileSystemWatcher(CONFIG_GLOB)
-        }
-      }
+          fileEvents: Workspace.createFileSystemWatcher(CONFIG_GLOB),
+        },
+      };
       let client = new LanguageClient(
-        'tailwindcss-language-server',
-        'Tailwind CSS Language Server',
+        "tailwindcss-language-server",
+        "Tailwind CSS Language Server",
         serverOptions,
         clientOptions
-      )
+      );
 
-      client.start()
-      clients.set(folder.uri.toString(), client)
+      client.start();
+      clients.set(folder.uri.toString(), client);
     }
   }
 
-  Workspace.onDidOpenTextDocument(didOpenTextDocument)
-  Workspace.textDocuments.forEach(didOpenTextDocument)
-  Workspace.onDidChangeWorkspaceFolders(event => {
+  Workspace.onDidOpenTextDocument(didOpenTextDocument);
+  Workspace.textDocuments.forEach(didOpenTextDocument);
+  Workspace.onDidChangeWorkspaceFolders((event) => {
     for (let folder of event.removed) {
-      let client = clients.get(folder.uri.toString())
+      let client = clients.get(folder.uri.toString());
       if (client) {
-        clients.delete(folder.uri.toString())
-        client.stop()
+        clients.delete(folder.uri.toString());
+        client.stop();
       }
     }
-  })
+  });
 }
 
 export function deactivate(): Thenable<void> {
-  let promises: Thenable<void>[] = []
+  let promises: Thenable<void>[] = [];
   if (defaultClient) {
-    promises.push(defaultClient.stop())
+    promises.push(defaultClient.stop());
   }
   for (let client of clients.values()) {
     if (client) {
-      promises.push(client.stop())
+      promises.push(client.stop());
     }
   }
-  return Promise.all(promises).then(() => undefined)
+  return Promise.all(promises).then(() => undefined);
 }
